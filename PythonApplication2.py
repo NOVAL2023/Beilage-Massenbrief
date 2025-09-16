@@ -26,7 +26,7 @@ except ImportError as e:
     sys.exit(1)
 
 # === Basispfade ===
-BASE_DIR = Path(r"C:\Users\peno\Beilagebrief\Beilage-Massenbrief")  ##HIER MUSS EIGENER PFAD GEWÄHLT WERDEN
+BASE_DIR = Path(r"C:\Users\peno\Beilagebrief\Beilage-Massenbrief")  ### HIER MUSS EIGENER PFAD GEWÄHLT WERDEN ###
 INPUT_XLSX = BASE_DIR / "mock.xlsx"
 TEMPLATE_XLSX = BASE_DIR / "Beilage Verfuegung.xlsx"
 OUTPUT_XLSX = BASE_DIR / "Beilage_Verfuegung_per_Kreditor.xlsx"
@@ -377,3 +377,4 @@ if __name__ == "__main__":
         traceback.print_exc()
 
         sys.exit(1)
+
