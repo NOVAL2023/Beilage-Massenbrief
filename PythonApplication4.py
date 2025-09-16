@@ -305,25 +305,7 @@ def main():
 
         
         # --- NA15-Begründungen (aus separatem Register) unterhalb einfügen ---
-        # ERs dieses Kreditors, die NA15 in der Haupttabelle haben:
-        try:
-            ers_na15 = (
-                part.loc[part[COL_CODE].astype(str).str.upper() == "NA15", COL_ER]
-                    .astype(str).str.strip().dropna().unique().tolist()
-            )
-
-            rows = []
-            for er in sorted(ers_na15):
-                er_key = norm_er(er)                 # <-- normalize here
-                reasons = na15_index.get((name, er_key), [])
-    if reasons:
-        rows.append((er, "\n\n".join(reasons)))
-            )
-        except Exception:
-            ers_na15 = []
-
-        # --- NA15 aus separatem Register unterhalb einfügen ---
-        # Alle ERs dieses Kreditors, die in der Haupttabelle NA15 sind
+        # ERs dieses Kreditors, die in der Haupttabelle NA15 sind
         ers_na15 = (
             part.loc[part[COL_CODE].astype(str).str.upper() == "NA15", COL_ER]
                 .astype(str).str.strip().dropna().unique().tolist()
@@ -331,7 +313,8 @@ def main():
 
         rows = []
         for er in sorted(ers_na15):
-            reasons = na15_index.get((name, er), [])
+            er_key = norm_er(er)                      # <-- normalize here
+            reasons = na15_index.get((name, er_key), [])
             if reasons:
                 rows.append((er, "\n\n".join(reasons)))
 
