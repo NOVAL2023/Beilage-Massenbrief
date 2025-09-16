@@ -32,6 +32,7 @@ COL_REASON   = "Begründung"
 
 # === Welches Register (Sheet) soll gelesen werden === 
 SHEET_NAME = "Kontierung"
+NA15_SHEET_NAME = "NA15 Begründungen"
 
 # === NA15: aus separates Register lesen und indizieren ===
 def load_na15_index_exact(xlsx_path: Path, sheet_name: str = "NA15 Begründungen"):
@@ -227,7 +228,7 @@ def main():
 
     try:
         df = pd.read_excel(INPUT_XLSX, engine="openpyxl", sheet_name=SHEET_NAME)
-        na15_index = load_na15_index(INPUT_XLSX, NA15_SHEET_NAME)
+        na15_index = load_na15_index_exact(INPUT_XLSX, NA15_SHEET_NAME)
 
     except UnicodeDecodeError:
         df = pd.read_excel(INPUT_XLSX, engine="openpyxl", encoding="latin1")
