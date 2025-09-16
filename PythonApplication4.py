@@ -34,61 +34,31 @@ COL_REASON   = "Begründung"
 SHEET_NAME = "Kontierung"
 
 # === NA15: aus separates Register lesen und indizieren ===
-NA15_SHEET_NAME = "NA15 Begründungen"
-
-def _norm(s: str) -> str:
-    return str(s or "").strip().casefold()
-
-def load_na15_index(xlsx_path: Path, sheet_name: str | None = NA15_SHEET_NAME):
+def load_na15_index_exact(xlsx_path: Path, sheet_name: str = "NA15 Begründungen"):
     """
-    Liest das NA15-Register und baut ein Dict:
-      key: (kreditor_name_norm, er_norm)  -> list[str]  (Begründungen)
-    Erkennt gängige Spalten-Synonyme.
+    Liest das Blatt 'NA15 Begründungen', dessen Header in Excel-Zeile 2 stehen,
+    und baut einen Index: (Kreditor-Name, ER) -> [Begründungen...]
     """
-    # Alle Sheets laden (robust gegen Reihenfolge/Hidden)
-    all_sheets = pd.read_excel(xlsx_path, engine="openpyxl", sheet_name=None)
+    # Header=1 --> zweite Zeile als Überschriften verwenden
+    df = pd.read_excel(xlsx_path, engine="openpyxl", sheet_name=sheet_name, header=1)
 
-    # Explizit benanntes Sheet nehmen, sonst heuristisch suchen
-    if sheet_name and sheet_name in all_sheets:
-        df = all_sheets[sheet_name].copy()
-    else:
-        # Heuristik: erstes Blatt, das alle Pflichtspalten (oder Synonyme) enthält
-        for name, df_try in all_sheets.items():
-            cols_norm = [_norm(c) for c in df_try.columns]
-            if any(c in cols_norm for c in ("kreditor name", "kreditor", "ithsuppliername")) \
-               and any(c in cols_norm for c in ("er nr.", "er", "ernr", "er-nr")) \
-               and any(c in cols_norm for c in ("begründung", "begruendung", "grund", "kommentar", "bemerkung")):
-                df = df_try.copy()
-                break
-        else:
-            # Nichts Passendes gefunden
-            return {}
+    # Nur die drei relevanten Spalten ziehen
+    need = ["ER", "Name", "Kommentar Begründung"]
+    missing = [c for c in need if c not in df.columns]
+    if missing:
+        raise ValueError(f"Im Blatt '{sheet_name}' fehlen Spalten: {missing}")
 
-    # Spalten-Synonyme auf Zielnamen mappen
-    colmap = {}
-    for c in df.columns:
-        cn = _norm(c)
-        if cn in ("kreditor name", "kreditor", "ithsuppliername"):
-            colmap[c] = "NA15_NAME"
-        elif cn in ("er nr.", "er", "ernr", "er-nr"):
-            colmap[c] = "NA15_ER"
-        elif cn in ("begründung", "begruendung", "grund", "kommentar", "bemerkung"):
-            colmap[c] = "NA15_REASON"
-    df = df.rename(columns=colmap)
+    # Leere Kommentare raus
+    df = df[df["Kommentar Begründung"].astype(str).str.strip() != ""].copy()
 
-    req = {"NA15_NAME", "NA15_ER", "NA15_REASON"}
-    if not req.issubset(df.columns):
-        # Falls Spalten anders heißen, hier anpassen/erweitern
-        return {}
-
-    # leere Gründe raus
-    df = df[df["NA15_REASON"].astype(str).str.strip() != ""].copy()
-
-    # Index bauen: (name_norm, er_norm) -> [reasons...]
+    # Index bauen
     index = {}
     for _, row in df.iterrows():
-        key = (_norm(row["NA15_NAME"]), _norm(row["NA15_ER"]))
-        index.setdefault(key, []).append(str(row["NA15_REASON"]).strip())
+        name = str(row["Name"]).strip()
+        er   = str(row["ER"]).strip()
+        reason = str(row["Kommentar Begründung"]).strip()
+        if name and er and reason:
+            index.setdefault((name, er), []).append(reason)
     return index
 
 # === Vorlage-Zellen ===
@@ -335,7 +305,7 @@ def main():
         ws[f"G{total_row_idx}"].border = Border()     # Kein Rahmen
 
         
-        # --- NA15-Begründungen (aus separatem Register) unterhalb einfügen ---
+            # --- NA15-Begründungen (aus separatem Register) unterhalb einfügen ---
         # ERs dieses Kreditors, die NA15 in der Haupttabelle haben:
         try:
             ers_na15 = (
@@ -347,19 +317,21 @@ def main():
         except Exception:
             ers_na15 = []
 
-        # Passende Begründungen aus dem separaten NA15-Register holen
+        # --- NA15 aus separatem Register unterhalb einfügen ---
+        # Alle ERs dieses Kreditors, die in der Haupttabelle NA15 sind
+        ers_na15 = (
+            part.loc[part[COL_CODE].astype(str).str.upper() == "NA15", COL_ER]
+                .astype(str).str.strip().dropna().unique().tolist()
+        )
+
         rows = []
-        name_norm = _norm(name)  # Kreditor-Name aus dem aktuellen Blatt
-        for er in sorted(ers_na15, key=lambda x: x):
-            key = (name_norm, _norm(er))
-            reasons = na15_index.get(key, [])
+        for er in sorted(ers_na15):
+            reasons = na15_index.get((name, er), [])
             if reasons:
-                # mehrere Gründe pro ER ggf. zusammenfassen
                 rows.append((er, "\n\n".join(reasons)))
 
         if rows:
-            # Startposition: 3 Leerzeilen unter der Totals-Zeile
-            block_start = calculate_optimal_na14_position(total_row_idx)  # liefert total_row_idx + 4
+            block_start = calculate_optimal_na14_position(total_row_idx)  # = total_row_idx + 4
 
             # Überschrift
             ws[f"A{block_start}"] = "Begründungen (NA15)"
@@ -370,6 +342,7 @@ def main():
             hdr = block_start + 1
             ws[f"A{hdr}"] = "ER Nr."
             ws[f"B{hdr}"] = "Begründung"
+
             header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
             header_font = Font(bold=True)
             bottom_border = Border(bottom=Side(style='thin'))
@@ -380,9 +353,9 @@ def main():
                 c.alignment = Alignment(horizontal='center', vertical='center')
                 c.border = bottom_border
 
-            # Optional: Begründungs-Spalte breiter machen (B..F zusammenführen)
+            # Optional: Begründungs-Spalte breiter (B..F zusammenführen)
             try:
-                ws.merge_cells(start_row=hdr, start_column=2, end_row=hdr, end_column=6)  # B..F
+                ws.merge_cells(start_row=hdr, start_column=2, end_row=hdr, end_column=6)
             except Exception:
                 pass
 
@@ -393,24 +366,17 @@ def main():
 
                 ws[f"B{r}"] = reason_text
                 ws[f"B{r}"].alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
-
-                # Merge pro Datenzeile (B..F) – falls gewünscht
                 try:
                     ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=6)
                 except Exception:
                     pass
 
-                # Zeilenhöhe grob nach Textlänge
+                # grobe Zeilenhöhe
                 if reason_text:
                     est_lines = max(1, len(reason_text) // 80 + reason_text.count("\n") + 1)
                     ws.row_dimensions[r].height = min(est_lines * 15, 180)
 
                 r += 1
-
-            print(f"    → NA15-Begründungen hinzugefügt: {len(rows)} Einträge")
-        else:
-            # Keine NA15-Fälle oder keine Begründungen im NA15-Sheet für diesen Kreditor/ER
-            pass
 
 
     wb.remove(wb[base_title])
