@@ -121,4 +121,5 @@ Das Ergebnis (`Beilage_Verfuegung_per_Kreditor.xlsx`) liegt im Projektordner.
 
 ## Authors
 
+- Cristian Noya (Head Finance bei SDAG)
 - Noé Peterhans (M&A Analyst bei SDAG)  
