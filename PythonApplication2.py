@@ -26,7 +26,7 @@ except ImportError as e:
     sys.exit(1)
 
 # === Basispfade ===
-BASE_DIR = Path(r"C:\Users\noc\OneDrive - Steiner AG\Desktop\Schuldenruf Verfuegung")
+BASE_DIR = Path(r"C:\Users\peno\Beilagebrief\Beilage-Massenbrief")
 INPUT_XLSX = BASE_DIR / "mock.xlsx"
 TEMPLATE_XLSX = BASE_DIR / "Beilage Verfuegung.xlsx"
 OUTPUT_XLSX = BASE_DIR / "Beilage_Verfuegung_per_Kreditor.xlsx"
