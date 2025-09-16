@@ -277,77 +277,73 @@ def main():
         
         # NA15-Register erzeugen
 
-        try:
-            # Alle NA15-Zeilen dataset-weit
-            df_na15 = df[df[COL_CODE].str.upper() == "NA15"].copy()
+        # --- NA15-Block unterhalb der Tabelle einfügen (je Kreditor) ---
+        na15_df = part.copy()
+        # Filter: Code == NA15 (case-insensitive), Begründung nicht leer
+        na15_df = na15_df[na15_df[COL_CODE].str.upper() == "NA15"]
+        na15_df = na15_df[na15_df[COL_REASON].astype(str).str.strip() != ""]
 
-            if not df_na15.empty:
-                # Optional sortieren: nach Kreditor-Name, dann ER
-                sort_cols = []
-                if COL_SUP_NAME in df_na15.columns:
-                    sort_cols.append(COL_SUP_NAME)
-                if COL_ER in df_na15.columns:
-                    sort_cols.append(COL_ER)
-                if sort_cols:
-                    df_na15 = df_na15.sort_values(sort_cols)
+        if not na15_df.empty:
+            # Position: 3 Leerzeilen Abstand unter der Total-Zeile
+            na15_start = calculate_optimal_na14_position(total_row_idx)  # nutzt +4 → 3 Zeilen Abstand
 
-                ws_na = wb.create_sheet(title="NA15_Begründungen")
+            # Überschrift
+            ws[f"A{na15_start}"] = "Begründungen (NA15)"
+            ws[f"A{na15_start}"].font = Font(bold=True, size=12)
+            ws[f"A{na15_start}"].alignment = Alignment(horizontal='left', vertical='top')
 
-                # Seitenlayout & Spaltenbreiten (du kannst deine Helfer wiederverwenden/variieren)
-                setup_page_formatting(ws_na)
-                # Eigene schmale Breiten: Name breiter, Begründung am breitesten
-                widths = {'A': 35, 'B': 14, 'C': 90}
-                for col, w in widths.items():
-                    ws_na.column_dimensions[col].width = w
+            # Kleine 2-Spalten-Tabelle: ER Nr. | Begründung
+            hdr_row = na15_start + 1
+            ws[f"A{hdr_row}"] = "ER Nr."
+            ws[f"B{hdr_row}"] = "Begründung"
 
-                # Header
-                header_row = 1
-                headers = [("A", "Kreditor"), ("B", "ER Nr."), ("C", "Begründung")]
-                header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-                header_font = Font(bold=True)
-                bottom_border = Border(bottom=Side(style='thin'))
-                for col, title in headers:
-                    cell = ws_na[f"{col}{header_row}"]
-                    cell.value = title
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal='center', vertical='center')
-                    cell.border = bottom_border
+            # Kopfzeile formatieren
+            header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+            header_font = Font(bold=True)
+            bottom_border = Border(bottom=Side(style='thin'))
+            for col in ["A", "B"]:
+                c = ws[f"{col}{hdr_row}"]
+                c.fill = header_fill
+                c.font = header_font
+                c.alignment = Alignment(horizontal='center', vertical='center')
+                c.border = bottom_border
 
-                # Daten schreiben
-                row_idx = header_row + 1
-                for _, rec in df_na15.iterrows():
-                    # Kreditor-Name (Fallback auf Code)
-                    kred_name = str(rec.get(COL_SUP_NAME, "")).strip()
-                    if not kred_name:
-                        kred_name = str(rec.get(COL_SUP_CODE, "")).strip()
+            # Optional: Begründungs-Spalte über B..F zusammenführen (mehr Platz)
+            try:
+                ws.merge_cells(start_row=hdr_row, start_column=2, end_row=hdr_row, end_column=6)  # B..F
+            except Exception:
+                pass
 
-                    er_val = str(rec.get(COL_ER, "")).strip()
-                    begr = str(rec.get(COL_REASON, "")).strip()
+            # Datenzeilen schreiben
+            data_row = hdr_row + 1
+            # (Optional) sortieren: erst nach ER (falls sinnvoll)
+            if COL_ER in na15_df.columns:
+                na15_df = na15_df.sort_values(by=[COL_ER])
 
-                    ws_na[f"A{row_idx}"] = kred_name
-                    ws_na[f"A{row_idx}"].alignment = Alignment(horizontal='left', vertical='top')
+            for _, rec in na15_df.iterrows():
+                er_val = str(rec.get(COL_ER, "")).strip()
+                begr = str(rec.get(COL_REASON, "")).strip()
 
-                    ws_na[f"B{row_idx}"] = er_val
-                    ws_na[f"B{row_idx}"].alignment = Alignment(horizontal='center', vertical='top')
+                # ER in A
+                ws[f"A{data_row}"] = er_val
+                ws[f"A{data_row}"].alignment = Alignment(horizontal='center', vertical='top')
 
-                    ws_na[f"C{row_idx}"] = begr
-                    ws_na[f"C{row_idx}"].alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+                # Begründung in B..F (merge pro Datenzeile)
+                ws[f"B{data_row}"] = begr
+                ws[f"B{data_row}"].alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+                try:
+                    ws.merge_cells(start_row=data_row, start_column=2, end_row=data_row, end_column=6)  # B..F
+                except Exception:
+                    pass
 
-                    # Optionale dynamische Zeilenhöhe für lange Begründungen
-                    if begr:
-                        est_lines = max(1, len(begr) // 80 + begr.count("\n") + 1)
-                        ws_na.row_dimensions[row_idx].height = min(est_lines * 15, 180)
+                # Zeilenhöhe grob an Textlänge anpassen
+                if begr:
+                    est_lines = max(1, len(begr) // 80 + begr.count("\n") + 1)
+                    ws.row_dimensions[data_row].height = min(est_lines * 15, 180)
 
-                    row_idx += 1
+                data_row += 1
 
-                print(f"✓ NA15-Reiter mit {len(df_na15)} Einträgen erzeugt")
-
-            else:
-                print("Info: Keine NA15-Einträge gefunden – kein NA15-Register angelegt.")
-
-        except Exception as e:
-            print(f"Warnung: NA15-Register konnte nicht erstellt werden: {e}")
+            print(f"    → NA15-Begründungen hinzugefügt: {len(na15_df)} Einträge")
 
 
     wb.remove(wb[base_title])
