@@ -30,33 +30,31 @@ COL_CC       = "itlCostCentreCode1"
 COL_CODE     = "Code"
 COL_REASON   = "Begründung"
 
+# === Helper
+def norm_er(x) -> str:
+    """Normalize ER to digits only, so 959168.0 -> '959168' and '  0959-168 ' -> '0959168'."""
+    return re.sub(r"\D", "", str(x or ""))
+
+
 # === Welches Register (Sheet) soll gelesen werden === 
 SHEET_NAME = "Kontierung"
 NA15_SHEET_NAME = "NA15 Begründungen"
 
 # === NA15: aus separates Register lesen und indizieren ===
 def load_na15_index_exact(xlsx_path: Path, sheet_name: str = "NA15 Begründungen"):
-    """
-    Liest das Blatt 'NA15 Begründungen', dessen Header in Excel-Zeile 2 stehen,
-    und baut einen Index: (Kreditor-Name, ER) -> [Begründungen...]
-    """
-    # Header=1 --> zweite Zeile als Überschriften verwenden
     df = pd.read_excel(xlsx_path, engine="openpyxl", sheet_name=sheet_name, header=1)
 
-    # Nur die drei relevanten Spalten ziehen
     need = ["ER", "Name", "Kommentar Begründung"]
     missing = [c for c in need if c not in df.columns]
     if missing:
         raise ValueError(f"Im Blatt '{sheet_name}' fehlen Spalten: {missing}")
 
-    # Leere Kommentare raus
     df = df[df["Kommentar Begründung"].astype(str).str.strip() != ""].copy()
 
-    # Index bauen
     index = {}
     for _, row in df.iterrows():
         name = str(row["Name"]).strip()
-        er   = str(row["ER"]).strip()
+        er   = norm_er(row["ER"])                 # <-- normalize here
         reason = str(row["Kommentar Begründung"]).strip()
         if name and er and reason:
             index.setdefault((name, er), []).append(reason)
@@ -306,14 +304,20 @@ def main():
         ws[f"G{total_row_idx}"].border = Border()     # Kein Rahmen
 
         
-            # --- NA15-Begründungen (aus separatem Register) unterhalb einfügen ---
+        # --- NA15-Begründungen (aus separatem Register) unterhalb einfügen ---
         # ERs dieses Kreditors, die NA15 in der Haupttabelle haben:
         try:
             ers_na15 = (
-                part.loc[part[COL_CODE].str.upper() == "NA15", COL_ER]
-                    .astype(str).str.strip()
-                    .dropna()
-                    .unique().tolist()
+                part.loc[part[COL_CODE].astype(str).str.upper() == "NA15", COL_ER]
+                    .astype(str).str.strip().dropna().unique().tolist()
+            )
+
+            rows = []
+            for er in sorted(ers_na15):
+                er_key = norm_er(er)                 # <-- normalize here
+                reasons = na15_index.get((name, er_key), [])
+    if reasons:
+        rows.append((er, "\n\n".join(reasons)))
             )
         except Exception:
             ers_na15 = []
